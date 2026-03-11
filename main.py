@@ -1,17 +1,24 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+
+# the sqlalchemy
+from sqlalchemy.orm import Session
 import string
 import random
 
+from db.database import SessionLocal, engine
+from db import models, crud, schemas
+
+models.Base.metadata.create_call(bind=engine)
 app = FastAPI()
 
-# temp storage
-url_db = {}
 
-
-class URLRequest(BaseModel):
-    long_url: str
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def generate_short_code(length=6):
@@ -19,15 +26,19 @@ def generate_short_code(length=6):
     return "".join(random.choice(chars) for _ in range(length))
 
 
-@app.post("/shorten")
-def shorten_url(request: URLRequest):
+@app.post("/shorten", response_model=schemas.URLResponse)
+def shorten_url(request: schemas.URLCreate, db: Session = Depends(get_db)):
     short_code = generate_short_code()
-    url_db[short_code] = request.long_url
+
+    crud.create_url(db, short_code, request.long_url)
+
     return {"short_url": f"http://localhost:8000/{short_code}"}
 
 
 @app.get("/{short_code}")
-def redirect_url(short_code: str):
-    if short_code in url_db:
-        return RedirectResponse(url=url_db[short_code])
-    raise HTTPException(status_code=404, detail="URL not found")
+def redirect_url(short_code: str, db: Session = Depends(get_db)):
+    db_url = crud.get_url(db, short_code)
+
+    if not db_url:
+        raise HTTPException(status_code=404, detail="URL not found")
+    return {"long_url": db_url.long_url}
