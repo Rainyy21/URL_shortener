@@ -9,7 +9,8 @@ import random
 from db.database import SessionLocal, engine
 from db import models, crud, schemas
 
-models.Base.metadata.create_call(bind=engine)
+models.Base.metadata.create_all(bind=engine)
+
 app = FastAPI()
 
 
@@ -41,4 +42,4 @@ def redirect_url(short_code: str, db: Session = Depends(get_db)):
 
     if not db_url:
         raise HTTPException(status_code=404, detail="URL not found")
-    return {"long_url": db_url.long_url}
+    return RedirectResponse(url=db_url.long_url)
