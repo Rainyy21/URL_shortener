@@ -37,19 +37,24 @@ def shorten_url(request: schemas.URLCreate, db: Session = Depends(get_db)):
 
     crud.create_url(db, short_code, request.long_url)
 
-    # set it in cache for a hour
-    redis_client.set(short_code, request.long_url, ex=3600)
+    # set it in cache for a hour, but don't fail if redis is down
+    try:
+        redis_client.set(short_code, request.long_url, ex=3600)
+    except Exception:
+        print("Redis is unavailable, skipping cache set")
 
     return {"short_url": f"http://localhost:8000/{short_code}"}
 
 
 @app.get("/{short_code}")
 def redirect_url(short_code: str, db: Session = Depends(get_db)):
-    # check the redis
-    check_url = redis_client.get(short_code)
-
-    if check_url:
-        return RedirectResponse(url=check_url)
+    # check the redis, but don't fail if redis is down
+    try:
+        check_url = redis_client.get(short_code)
+        if check_url:
+            return RedirectResponse(url=check_url)
+    except Exception:
+        print("Redis is unavailable, skipping cache check")
 
     # get url from the db
     db_url = crud.get_url(db, short_code)
@@ -57,5 +62,10 @@ def redirect_url(short_code: str, db: Session = Depends(get_db)):
     if not db_url:
         raise HTTPException(status_code=404, detail="URL not found")
 
-    redis_client.set(short_code, db_url.long_url)
+    # update cache if possible
+    try:
+        redis_client.set(short_code, db_url.long_url)
+    except Exception:
+        pass
+
     return RedirectResponse(url=db_url.long_url)

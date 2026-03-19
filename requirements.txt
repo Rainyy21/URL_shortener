@@ -2,3 +2,7 @@ fastapi
 uvicorn
 sqlalchemy
 redis
+pydantic
+pytest
+httpx
+pytest-mock
